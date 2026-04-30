@@ -37,7 +37,7 @@ import { Database } from "@/storage/db"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
-import { drizzle } from "drizzle-orm/bun-sqlite"
+import { drizzle } from "#drizzle"
 import { ensureProcessMetadata } from "@opencode-ai/core/util/opencode-process"
 
 const processMetadata = ensureProcessMetadata("main")

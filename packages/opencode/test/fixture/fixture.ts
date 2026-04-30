@@ -1,6 +1,7 @@
 import { $ } from "bun"
 import * as Observability from "@opencode-ai/core/effect/observability"
 import * as fs from "fs/promises"
+import { writeFileSync } from "fs"
 import os from "os"
 import path from "path"
 import { Effect, Context, Layer, ManagedRuntime } from "effect"
@@ -86,7 +87,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     await $`git commit --allow-empty -m "root commit ${dirpath}"`.cwd(dirpath).quiet()
   }
   if (options?.config) {
-    await Bun.write(
+    writeFileSync(
       path.join(dirpath, "opencode.json"),
       JSON.stringify({
         $schema: "https://opencode.ai/config.json",

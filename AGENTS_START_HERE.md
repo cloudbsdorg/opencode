@@ -13,19 +13,47 @@ The opencode project follows the CloudBSD workflow patterns established in the p
 
 ## Current Status
 
-- **Phase**: Initial planning and project setup
+- **Phase**: Implementation complete, testing & CI pending
 - **Goal**: Remove Bun runtime dependency, add FreeBSD support
+- **Completed**: All core cross-platform fixes implemented
+- **Pending**: FreeBSD CI setup and end-to-end testing
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `AGENTS.md` | Agent guidelines and style guide |
-| `PLAN.md` | FreeBSD porting plan and progress |
+| `.plan/` | Planning documents directory |
 | `packages/opencode/package.json` | Main package with conditional exports |
 | `packages/opencode/src/pty/` | PTY implementations (bun/node) |
 | `packages/opencode/src/server/` | Server adapters (bun/node) |
 | `packages/opencode/script/build.ts` | Build script with platform targets |
+| `packages/opencode/Makefile.freebsd` | FreeBSD Makefile with auto-detection |
+| `packages/opencode/install.sh` | Installation script with auto-detection |
+
+## Installation
+
+Both the Makefile and install script auto-detect the best installation location and configure PATH:
+
+```bash
+# Using Makefile
+make install-auto          # Auto-detect (system if root, user-local otherwise)
+make install              # Default: /usr/local
+make install-user         # ~/.local
+make configure-path       # Configure PATH in shell profile
+
+# Using install script
+./install.sh              # Auto-detect
+./install.sh --system     # System-wide
+./install.sh --user       # User-local
+```
+
+The scripts:
+1. Create `~/.local` directories automatically if they don't exist
+2. Detect user's shell (bash, zsh, fish, tcsh/csh)
+3. Check shell profiles for existing PATH entries
+4. Add `~/.local/bin` to the appropriate profile if needed
+5. Provide shell-specific reload instructions
 
 ## Quick Start
 

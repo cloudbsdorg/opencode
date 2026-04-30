@@ -1,4 +1,5 @@
-import { Database } from "bun:sqlite"
+import { openSqliteDb, type SqliteDatabase } from "#sqlite"
+import { readFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import z from "zod"
@@ -60,9 +61,7 @@ export async function resolveZedSelection(dbPath: string, cwd = process.cwd()): 
   const text =
     contents.type === "contents" && contents.contents != null
       ? contents.contents
-      : await Bun.file(row.buffer_path)
-          .text()
-          .catch(() => undefined)
+      : await readFile(row.buffer_path, "utf8").catch(() => undefined)
   if (text == null) return { type: "unavailable" }
 
   const ranges = byteRanges.map((range) => {
@@ -85,9 +84,9 @@ export async function resolveZedSelection(dbPath: string, cwd = process.cwd()): 
 }
 
 function queryZedActiveEditor(dbPath: string, cwd: string) {
-  let db: Database | undefined
+  let db: SqliteDatabase | undefined
   try {
-    db = new Database(dbPath, { readonly: true })
+    db = openSqliteDb(dbPath, { readonly: true })
     const raw = db
       .query(
         `select
@@ -157,9 +156,9 @@ function queryZedEditorSelections(dbPath: string, row: ZedActiveEditorRow) {
 }
 
 function queryZedEditorContents(dbPath: string, row: ZedActiveEditorRow) {
-  let db: Database | undefined
+  let db: SqliteDatabase | undefined
   try {
-    db = new Database(dbPath, { readonly: true })
+    db = openSqliteDb(dbPath, { readonly: true })
     const parsed = ZedEditorContentsSchema.safeParse(
       db
         .query(

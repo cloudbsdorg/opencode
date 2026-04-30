@@ -8,6 +8,7 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 import { ServerAuth } from "@/server/auth"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
+import { readStdin } from "@/util/stdin"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
 import { Server } from "../../server/server"
 import { Provider } from "@/provider/provider"
@@ -326,11 +327,126 @@ export const RunCommand = effectCmd({
       if (args.file) {
         const list = Array.isArray(args.file) ? args.file : [args.file]
 
-        for (const filePath of list) {
-          const resolvedPath = path.resolve(process.cwd(), filePath)
-          if (!(await Filesystem.exists(resolvedPath))) {
-            UI.error(`File not found: ${filePath}`)
-            process.exit(1)
+        files.push({
+          type: "file",
+          url: pathToFileURL(resolvedPath).href,
+          filename: path.basename(resolvedPath),
+          mime,
+        })
+      }
+    }
+
+    if (!process.stdin.isTTY) message += "\n" + (await readStdin())
+
+    if (message.trim().length === 0 && !args.command) {
+      UI.error("You must provide a message or a command")
+      process.exit(1)
+    }
+
+    if (args.fork && !args.continue && !args.session) {
+      UI.error("--fork requires --continue or --session")
+      process.exit(1)
+    }
+
+    const rules: Permission.Ruleset = [
+      {
+        permission: "question",
+        action: "deny",
+        pattern: "*",
+      },
+      {
+        permission: "plan_enter",
+        action: "deny",
+        pattern: "*",
+      },
+      {
+        permission: "plan_exit",
+        action: "deny",
+        pattern: "*",
+      },
+    ]
+
+    function title() {
+      if (args.title === undefined) return
+      if (args.title !== "") return args.title
+      return message.slice(0, 50) + (message.length > 50 ? "..." : "")
+    }
+
+    async function session(sdk: OpencodeClient) {
+      const baseID = args.continue ? (await sdk.session.list()).data?.find((s) => !s.parentID)?.id : args.session
+
+      if (baseID && args.fork) {
+        const forked = await sdk.session.fork({ sessionID: baseID })
+        return forked.data?.id
+      }
+
+      if (baseID) return baseID
+
+      const name = title()
+      const result = await sdk.session.create({ title: name, permission: rules })
+      return result.data?.id
+    }
+
+    async function share(sdk: OpencodeClient, sessionID: string) {
+      const cfg = await sdk.config.get()
+      if (!cfg.data) return
+      if (cfg.data.share !== "auto" && !Flag.OPENCODE_AUTO_SHARE && !args.share) return
+      const res = await sdk.session.share({ sessionID }).catch((error) => {
+        if (error instanceof Error && error.message.includes("disabled")) {
+          UI.println(UI.Style.TEXT_DANGER_BOLD + "!  " + error.message)
+        }
+        return { error }
+      })
+      if (!res.error && "data" in res && res.data?.share?.url) {
+        UI.println(UI.Style.TEXT_INFO_BOLD + "~  " + res.data.share.url)
+      }
+    }
+
+    async function execute(sdk: OpencodeClient) {
+      function tool(part: ToolPart) {
+        try {
+          if (part.tool === "bash") return bash(props<typeof BashTool>(part))
+          if (part.tool === "glob") return glob(props<typeof GlobTool>(part))
+          if (part.tool === "grep") return grep(props<typeof GrepTool>(part))
+          if (part.tool === "read") return read(props<typeof ReadTool>(part))
+          if (part.tool === "write") return write(props<typeof WriteTool>(part))
+          if (part.tool === "webfetch") return webfetch(props<typeof WebFetchTool>(part))
+          if (part.tool === "edit") return edit(props<typeof EditTool>(part))
+          if (part.tool === "websearch") return websearch(props<typeof WebSearchTool>(part))
+          if (part.tool === "task") return task(props<typeof TaskTool>(part))
+          if (part.tool === "todowrite") return todo(props<typeof TodoWriteTool>(part))
+          if (part.tool === "skill") return skill(props<typeof SkillTool>(part))
+          return fallback(part)
+        } catch {
+          return fallback(part)
+        }
+      }
+
+      function emit(type: string, data: Record<string, unknown>) {
+        if (args.format === "json") {
+          process.stdout.write(JSON.stringify({ type, timestamp: Date.now(), sessionID, ...data }) + EOL)
+          return true
+        }
+        return false
+      }
+
+      const events = await sdk.event.subscribe()
+      let error: string | undefined
+
+      async function loop() {
+        const toggles = new Map<string, boolean>()
+
+        for await (const event of events.stream) {
+          if (
+            event.type === "message.updated" &&
+            event.properties.info.role === "assistant" &&
+            args.format !== "json" &&
+            toggles.get("start") !== true
+          ) {
+            UI.empty()
+            UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
+            UI.empty()
+            toggles.set("start", true)
           }
 
           const mime = (await Filesystem.isDir(resolvedPath)) ? "application/x-directory" : "text/plain"

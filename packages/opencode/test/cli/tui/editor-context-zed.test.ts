@@ -1,10 +1,9 @@
-import { Database } from "bun:sqlite"
-import { mkdir, symlink } from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
-import { expect, spyOn, test } from "bun:test"
-import { offsetToPosition, resolveZedDbPath, resolveZedSelection } from "../../../src/cli/cmd/tui/context/editor-zed"
+import { expect, test } from "bun:test"
+import { writeFileSync } from "node:fs"
+import { offsetToPosition, resolveZedSelection, type ZedSelectionResult } from "../../../src/cli/cmd/tui/context/editor-zed"
 import { tmpdir } from "../../fixture/fixture"
+import { openSqliteDb } from "#sqlite"
 
 type ZedFixtureOptions = {
   workspacePaths?: string | null
@@ -20,9 +19,9 @@ async function writeZedFixture(dir: string, options: ZedFixtureOptions = {}) {
   const dbPath = path.join(dir, "zed.sqlite")
   const filePath = path.join(dir, "file.ts")
   const contents = options.contents ?? "one\ntwo\nthree"
-  await Bun.write(filePath, contents)
+  writeFileSync(filePath, contents)
 
-  const db = new Database(dbPath)
+  const db = openSqliteDb(dbPath)
   db.run("create table workspaces (workspace_id integer, paths text, timestamp text)")
   db.run("create table panes (pane_id integer, workspace_id integer, active integer)")
   db.run("create table items (item_id integer, workspace_id integer, pane_id integer, active integer, kind text)")

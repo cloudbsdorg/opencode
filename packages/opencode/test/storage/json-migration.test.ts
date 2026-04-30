@@ -1,10 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { Database } from "bun:sqlite"
-import { drizzle, SQLiteBunDatabase } from "drizzle-orm/bun-sqlite"
-import { migrate } from "drizzle-orm/bun-sqlite/migrator"
 import path from "path"
 import fs from "fs/promises"
-import { readFileSync, readdirSync } from "fs"
+import { readFileSync, readdirSync, writeFileSync } from "fs"
+import { openSqliteDb, type SqliteDatabase } from "#sqlite"
+import { drizzle } from "#drizzle"
+import { migrate, type SQLiteBunDatabase } from "#migrate"
 import { JsonMigration } from "@/storage/json-migration"
 import { Global } from "@opencode-ai/core/global"
 import { ProjectTable } from "../../src/project/project.sql"
@@ -61,21 +61,21 @@ async function setupStorageDir() {
   await fs.mkdir(path.join(storageDir, "permission"), { recursive: true })
   await fs.mkdir(path.join(storageDir, "session_share"), { recursive: true })
   // Create legacy marker to indicate JSON storage exists
-  await Bun.write(path.join(storageDir, "migration"), "1")
+  writeFileSync(path.join(storageDir, "migration"), "1")
   return storageDir
 }
 
 async function writeProject(storageDir: string, project: Record<string, unknown>) {
-  await Bun.write(path.join(storageDir, "project", `${project.id}.json`), JSON.stringify(project))
+  writeFileSync(path.join(storageDir, "project", `${project.id}.json`), JSON.stringify(project))
 }
 
 async function writeSession(storageDir: string, projectID: string, session: Record<string, unknown>) {
-  await Bun.write(path.join(storageDir, "session", projectID, `${session.id}.json`), JSON.stringify(session))
+  writeFileSync(path.join(storageDir, "session", projectID, `${session.id}.json`), JSON.stringify(session))
 }
 
 // Helper to create in-memory test database with schema
 function createTestDb() {
-  const sqlite = new Database(":memory:")
+  const sqlite = openSqliteDb(":memory:")
   sqlite.exec("PRAGMA foreign_keys = ON")
 
   // Apply schema migrations using drizzle migrate
@@ -98,7 +98,7 @@ function createTestDb() {
 
 describe("JSON to SQLite migration", () => {
   let storageDir: string
-  let sqlite: Database
+  let sqlite: SqliteDatabase
   let db: SQLiteBunDatabase
 
   beforeEach(async () => {

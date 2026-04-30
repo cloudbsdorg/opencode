@@ -1,0 +1,245 @@
+# FreeBSD Makefile for OpenCode
+# Supports system-wide installation (/usr/local) and user-local installation (~/.local)
+#
+# Usage:
+#   System-wide (requires root):
+#     make install
+#
+#   User-local installation:
+#     make install PREFIX=~/.local
+#
+#   Build only:
+#     make build
+#
+#   Clean build artifacts:
+#     make clean
+
+# Package name
+PKG_NAME = opencode
+
+# Binary name
+BINARY = opencode
+
+# Build target directory (FreeBSD x64 baseline by default)
+BUILD_DIR = dist/opencode-freebsd-x64-baseline
+
+# Default installation prefix (can be overridden)
+# Use PREFIX=<path> to override
+PREFIX ?= /usr/local
+
+# Directories
+BINDIR = $(DESTDIR)$(PREFIX)/bin
+LIBDIR = $(DESTDIR)$(PREFIX)/lib/$(PKG_NAME)
+DOCDIR = $(DESTDIR)$(PREFIX)/share/doc/$(PKG_NAME)
+STATEDIR = $(DESTDIR)/var/db/$(PKG_NAME)
+
+# Installation directories
+INSTALL_DIRS = $(BINDIR) $(LIBDIR) $(DOCDIR) $(STATEDIR)
+
+.PHONY: all build install install-system install-user install-auto configure-path clean distclean test typecheck version help
+
+# Default target
+all: build
+
+# Build the FreeBSD binary
+build:
+	@echo "Building OpenCode for FreeBSD..."
+	@echo "Target: opencode-freebsd-x64-baseline"
+	bun run script/build.ts --baseline --single --skip-embed-web-ui
+	@if [ -f "$(BUILD_DIR)/bin/$(BINARY)" ]; then \
+		echo "Build successful: $(BUILD_DIR)/bin/$(BINARY)"; \
+		$(BUILD_DIR)/bin/$(BINARY) --version || true; \
+	else \
+		echo "Build failed: binary not found"; \
+		exit 1; \
+	fi
+
+# Auto-detect installation location and install
+install-auto:
+	@echo "Auto-detecting installation location..."
+	@IS_ROOT=$$(id -u 2>/dev/null); \
+	if [ "$$IS_ROOT" = "0" ] && [ -w /usr/local/bin ] && [ -w /var/db ]; then \
+		echo "System-wide installation available"; \
+		$(MAKE) install PREFIX=/usr/local; \
+	elif [ -w "$$HOME/.local/bin" ] 2>/dev/null || mkdir -p "$$HOME/.local/bin" 2>/dev/null; then \
+		echo "User-local installation available"; \
+		$(MAKE) install PREFIX=$$HOME/.local; \
+	else \
+		echo "Error: Cannot determine writable installation location"; \
+		echo "Please specify PREFIX manually: make install PREFIX=/custom/path"; \
+		exit 1; \
+	fi
+
+# Full installation (uses PREFIX, defaults to /usr/local)
+install: install-check
+	@echo "Installing OpenCode to $(PREFIX)..."
+	@mkdir -p $(BINDIR) && echo "✓ Binary directory: $(BINDIR)" || { echo "Error: Cannot create $(BINDIR)"; exit 1; }
+	@echo "Installing binary to $(BINDIR)..."
+	@cp $(BUILD_DIR)/bin/$(BINARY) $(BINDIR)/$(BINARY)
+	@chmod 755 $(BINDIR)/$(BINARY)
+	@echo "Binary installed: $(BINDIR)/$(BINARY)"
+	@mkdir -p $(LIBDIR)
+	@if [ -d "$(BUILD_DIR)/lib" ]; then \
+		cp -r $(BUILD_DIR)/lib/* $(LIBDIR)/; \
+		echo "Libraries installed"; \
+	fi
+	@mkdir -p $(DOCDIR)
+	@cp README.md $(DOCDIR)/ 2>/dev/null || true
+	@cp LICENSE $(DOCDIR)/ 2>/dev/null || true
+	@mkdir -p $(STATEDIR)
+	@echo ""
+	@echo "=========================================="
+	@echo "OpenCode installed successfully!"
+	@echo "=========================================="
+	@echo "Binary:   $(BINDIR)/$(BINARY)"
+	@echo "Libraries: $(LIBDIR)/"
+	@echo "Data:     $(STATEDIR)/"
+	@echo ""
+	@if [ "$(PREFIX)" = "$$HOME/.local" ]; then \
+		echo "Checking PATH configuration..."; \
+		$(MAKE) configure-path PREFIX=$(PREFIX); \
+	fi
+
+# Check if build exists before installing
+install-check:
+	@if [ ! -f "$(BUILD_DIR)/bin/$(BINARY)" ]; then \
+		echo "Error: Build not found at $(BUILD_DIR)/bin/$(BINARY)"; \
+		echo "Run 'make build' first."; \
+		exit 1; \
+	fi
+
+# System-wide installation (requires root)
+install-system:
+	$(MAKE) install PREFIX=/usr/local
+
+# User-local installation (~/.local)
+install-user:
+	$(MAKE) install PREFIX=$(HOME)/.local
+
+# Configure PATH in shell profile
+configure-path:
+	@BINDIR="$(PREFIX)/bin"; \
+	HOME_DIR="$$HOME"; \
+	IS_IN_PATH=$$(echo ":$$PATH:" | grep -c ":$$BINDIR:" 2>/dev/null || echo "0"); \
+	if [ "$$IS_IN_PATH" -gt 0 ]; then \
+		echo "✓ OpenCode is in your PATH."; \
+	else \
+		echo "PATH not in current session - checking shell profiles..."; \
+		SHELL_NAME="$$(basename \"$$SHELL\" 2>/dev/null || echo 'bash')"; \
+		case "$$SHELL_NAME" in \
+			bash) PROFILE="$$HOME/.bashrc" ;; \
+			zsh) PROFILE="$$HOME/.zshrc" ;; \
+			fish) PROFILE="$$HOME/.config/fish/config.fish" ;; \
+			tcsh|csh) PROFILE="$$HOME/.tcshrc" ;; \
+			*) PROFILE="$$HOME/.profile" ;; \
+		esac; \
+		echo "Detected shell: $$SHELL_NAME"; \
+		echo "Profile: $$PROFILE"; \
+		if [ -f "$$PROFILE" ] && grep -q "HOME/.local/bin" "$$PROFILE" 2>/dev/null; then \
+			echo "✓ PATH already configured in $$PROFILE"; \
+		else \
+			echo "Adding PATH to $$PROFILE..."; \
+			case "$$SHELL_NAME" in \
+				bash|zsh) \
+					echo '' >> "$$PROFILE" 2>/dev/null; \
+					echo '# Added by OpenCode installer' >> "$$PROFILE"; \
+					echo 'export PATH="$$HOME/.local/bin:$$PATH"' >> "$$PROFILE" \
+					&& echo "✓ PATH added to $$PROFILE" || echo "✗ Could not update $$PROFILE"; \
+					echo ''; \
+					echo "To apply, run: source $$PROFILE" \
+					;; \
+				fish) \
+					mkdir -p "$$HOME/.config/fish" 2>/dev/null; \
+					echo '' >> "$$PROFILE" 2>/dev/null; \
+					echo '# Added by OpenCode installer' >> "$$PROFILE"; \
+					echo 'fish_add_path $$HOME/.local/bin' >> "$$PROFILE" \
+					&& echo "✓ PATH added to $$PROFILE" || echo "✗ Could not update $$PROFILE"; \
+					echo ''; \
+					echo "To apply, start a new fish shell or run: fish" \
+					;; \
+				tcsh|csh) \
+					echo '' >> "$$PROFILE" 2>/dev/null; \
+					echo '# Added by OpenCode installer' >> "$$PROFILE"; \
+					echo 'setenv PATH "$$HOME/.local/bin:$$PATH"' >> "$$PROFILE" \
+					&& echo "✓ PATH added to $$PROFILE" || echo "✗ Could not update $$PROFILE"; \
+					echo ''; \
+					echo "To apply, run: source $$PROFILE" \
+					;; \
+				*) \
+					echo '' >> "$$PROFILE" 2>/dev/null; \
+					echo '# Added by OpenCode installer' >> "$$PROFILE"; \
+					echo 'export PATH="$$HOME/.local/bin:$$PATH"' >> "$$PROFILE" \
+					&& echo "✓ PATH added to $$PROFILE" || echo "✗ Could not update $$PROFILE"; \
+					echo ''; \
+					echo "To apply, run: source $$PROFILE" \
+					;; \
+			esac; \
+		fi; \
+		echo ""; \
+		echo "Or run directly: $$BINDIR/opencode"; \
+	fi
+
+# Uninstall
+uninstall:
+	@echo "Uninstalling OpenCode from $(PREFIX)..."
+	@rm -f $(BINDIR)/$(BINARY) 2>/dev/null || true
+	@rm -rf $(LIBDIR)/ 2>/dev/null || true
+	@rm -rf $(DOCDIR)/ 2>/dev/null || true
+	@echo "OpenCode uninstalled."
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning build artifacts..."
+	@rm -rf dist/
+	@echo "Build directory cleaned."
+
+# Clean all generated files
+distclean: clean
+	@rm -rf node_modules/.cache 2>/dev/null || true
+	@echo "Done."
+
+# Run tests
+test:
+	bun test --timeout 30000
+
+# Typecheck
+typecheck:
+	bun typecheck
+
+# Show version
+version:
+	@$(BUILD_DIR)/bin/$(BINARY) --version 2>/dev/null || echo "Build not found. Run 'make build' first."
+
+# Help target
+help:
+	@echo "OpenCode FreeBSD Makefile"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all              Build the FreeBSD binary (default)"
+	@echo "  build            Build the FreeBSD binary"
+	@echo "  install          Install to PREFIX ($(PREFIX))"
+	@echo "  install-auto     Auto-detect best location and install"
+	@echo "  install-system   Install system-wide to /usr/local (requires root)"
+	@echo "  install-user     Install to ~/.local"
+	@echo "  configure-path   Configure PATH in shell profile (user-local)"
+	@echo "  uninstall        Uninstall from PREFIX"
+	@echo "  clean            Remove build artifacts"
+	@echo "  distclean        Remove all generated files"
+	@echo "  test             Run tests"
+	@echo "  typecheck        Run type checking"
+	@echo "  version          Show binary version"
+	@echo "  help             Show this help"
+	@echo ""
+	@echo "Variables:"
+	@echo "  PREFIX         Installation prefix (default: /usr/local)"
+	@echo "                 Override: make install PREFIX=/custom/path"
+	@echo "  DESTDIR        Staging directory for packaging"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build                       # Build for FreeBSD"
+	@echo "  sudo make install                # System-wide install"
+	@echo "  make install-auto                # Auto-detect location"
+	@echo "  make install PREFIX=~/myapps     # Custom prefix"
+	@echo "  make install-user                # User-local install (~/.local)"
+	@echo "  make configure-path              # Configure PATH in shell profile"
+	@echo "  make clean && make build         # Clean rebuild"

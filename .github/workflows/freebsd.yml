@@ -1,0 +1,103 @@
+name: freebsd-test
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ case(github.ref == 'refs/heads/dev', format('{0}-{1}', github.workflow, github.run_id), format('{0}-{1}', github.workflow, github.event.pull_request.number || github.ref)) }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Note: GitHub Actions doesn't natively support FreeBSD.
+  # This workflow serves as a reference for FreeBSD testing.
+  # To enable FreeBSD CI, use one of these options:
+  # 1. Self-hosted runner on FreeBSD
+  # 2. Cirrus-CI (native FreeBSD support)
+  # 3. Gitea Actions with FreeBSD runner
+
+  freebsd-unit:
+    name: unit (freebsd-${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - "x64"
+          - "arm64"
+    # FreeBSD runners need to be self-hosted or via Cirrus-CI
+    # This job is disabled until a FreeBSD runner is available
+    # runs-on: freebsd-${{ matrix.arch }}
+    runs-on: ["self-hosted", "linux", "amd64"]
+    if: false  # Disable until FreeBSD runner available
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup FreeBSD
+        uses: vaimalovic/actions/freebsd-setup@main
+        with:
+          version: "14.1"
+          arch: ${{ matrix.arch }}
+
+      - name: Install Node.js
+        run: |
+          pkg install -y node22
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          export PATH="$HOME/.bun/bin:$PATH"
+
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile
+
+      - name: Run unit tests
+        run: bun test --timeout 30000
+
+  freebsd-build:
+    name: build (freebsd-${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - "x64"
+          - "arm64"
+    runs-on: ["self-hosted", "linux", "amd64"]
+    if: false  # Disable until FreeBSD runner available
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup FreeBSD
+        uses: vaimalovic/actions/freebsd-setup@main
+        with:
+          version: "14.1"
+          arch: ${{ matrix.arch }}
+
+      - name: Install Node.js
+        run: |
+          pkg install -y node22 npm
+
+      - name: Build FreeBSD binary
+        run: |
+          npm install -g esbuild
+          bun run --cwd packages/opencode build --baseline --single
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-freebsd-${{ matrix.arch }}
+          path: packages/opencode/dist/

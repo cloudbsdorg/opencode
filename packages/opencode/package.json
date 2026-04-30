@@ -40,10 +40,23 @@
       "freebsd": "./src/server/adapter.node.ts",
       "default": "./src/server/adapter.bun.ts"
     },
-    "#httpapi-server": {
-      "bun": "./src/server/httpapi-server.node.ts",
-      "node": "./src/server/httpapi-server.node.ts",
-      "default": "./src/server/httpapi-server.node.ts"
+    "#sqlite": {
+      "bun": "./src/util/sqlite.bun.ts",
+      "node": "./src/util/sqlite.node.ts",
+      "freebsd": "./src/util/sqlite.node.ts",
+      "default": "./src/util/sqlite.bun.ts"
+    },
+    "#drizzle": {
+      "bun": "./src/util/drizzle.bun.ts",
+      "node": "./src/util/drizzle.node.ts",
+      "freebsd": "./src/util/drizzle.node.ts",
+      "default": "./src/util/drizzle.bun.ts"
+    },
+    "#migrate": {
+      "bun": "./src/util/migrate.bun.ts",
+      "node": "./src/util/migrate.node.ts",
+      "freebsd": "./src/util/migrate.node.ts",
+      "default": "./src/util/migrate.bun.ts"
     }
   },
   "devDependencies": {
