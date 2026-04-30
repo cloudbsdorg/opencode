@@ -5,7 +5,7 @@
 - Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety/irreversibility.
 - This project supports FreeBSD. When adding platform-specific code, use conditional imports with `freebsd` condition.
 - Prefer cross-platform Node.js APIs over Bun-specific ones where possible (e.g., use `fs.promises` instead of `Bun.file()`).
-- For FreeBSD support details, see `AGENTS_START_HERE.md` and `PLAN.md`.
+- For FreeBSD support details, see `AGENTS_START_HERE.md` and `.plan/000.1-freebsd-porting.md`.
 
 ## Style Guide
 
