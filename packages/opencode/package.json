@@ -25,16 +25,19 @@
     "#db": {
       "bun": "./src/storage/db.bun.ts",
       "node": "./src/storage/db.node.ts",
+      "freebsd": "./src/storage/db.node.ts",
       "default": "./src/storage/db.bun.ts"
     },
     "#pty": {
       "bun": "./src/pty/pty.bun.ts",
       "node": "./src/pty/pty.node.ts",
+      "freebsd": "./src/pty/pty.node.ts",
       "default": "./src/pty/pty.bun.ts"
     },
     "#hono": {
       "bun": "./src/server/adapter.bun.ts",
       "node": "./src/server/adapter.node.ts",
+      "freebsd": "./src/server/adapter.node.ts",
       "default": "./src/server/adapter.bun.ts"
     },
     "#httpapi-server": {

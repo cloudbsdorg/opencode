@@ -3,6 +3,9 @@
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
 - Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety/irreversibility.
+- This project supports FreeBSD. When adding platform-specific code, use conditional imports with `freebsd` condition.
+- Prefer cross-platform Node.js APIs over Bun-specific ones where possible (e.g., use `fs.promises` instead of `Bun.file()`).
+- For FreeBSD support details, see `AGENTS_START_HERE.md` and `PLAN.md`.
 
 ## Style Guide
 
@@ -11,15 +14,20 @@
 - Keep things in one function unless composable or reusable
 - Avoid `try`/`catch` where possible
 - Avoid using the `any` type
-- Use Bun APIs when possible, like `Bun.file()`
+- Use cross-platform Node.js APIs where possible (e.g., `fs.promises` over `Bun.file()`) for FreeBSD compatibility
+- Use Bun APIs only when they provide significant benefits or are already used in the file
 - Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
 - Prefer functional array methods (flatMap, filter, map) over for loops; use type guards on filter to maintain type inference downstream
-- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module.
+- In `src/config`, follow the existing self-export pattern at the top of the file (for example `export * as ConfigAgent from "./agent"`) when adding a new config module
+- When adding platform-specific implementations, use conditional imports with `bun`, `node`, and `freebsd` conditions
 
 Reduce total variable count by inlining when a value is only used once.
 
 ```ts
-// Good
+// Good (cross-platform: works on Bun and Node.js)
+const journal = await fs.promises.readFile(path.join(dir, "journal.json"), "utf-8").then(JSON.parse)
+
+// Alternative (Bun-specific, but more concise)
 const journal = await Bun.file(path.join(dir, "journal.json")).json()
 
 // Bad
@@ -101,3 +109,4 @@ const table = sqliteTable("session", {
 ## Type Checking
 
 - Always run `bun typecheck` from package directories (e.g., `packages/opencode`), never `tsc` directly.
+- On FreeBSD (where Bun may not be available), use `npx tsgo --noEmit` or install Bun first.

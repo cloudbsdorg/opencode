@@ -141,6 +141,14 @@ const allTargets: {
     arch: "x64",
     avx2: false,
   },
+  {
+    os: "freebsd",
+    arch: "x64",
+  },
+  {
+    os: "freebsd",
+    arch: "arm64",
+  },
 ]
 
 const targets = singleFlag
@@ -191,7 +199,12 @@ for (const item of targets) {
   const workerPath = "./src/cli/cmd/tui/worker.ts"
 
   // Use platform-specific bunfs root path based on target OS
-  const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
+  // FreeBSD uses real filesystem paths (no bunfs virtual filesystem)
+  const bunfsRoot = item.os === "win32"
+    ? "B:/~BUN/root/"
+    : item.os === "freebsd"
+      ? "/usr/local/lib/opencode/"
+      : "/$bunfs/root/"
   const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
   await Bun.build({
