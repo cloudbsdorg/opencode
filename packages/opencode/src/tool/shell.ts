@@ -306,25 +306,41 @@ function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv
   })
 }
 const parser = lazy(async () => {
-  const { Parser } = await import("web-tree-sitter")
-  const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  const treePath = resolveWasm(treeWasm)
-  await Parser.init({
-    locateFile() {
-      return treePath
-    },
-  })
-  const { default: bashWasm } = await import("tree-sitter-bash/tree-sitter-bash.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  const { default: psWasm } = await import("tree-sitter-powershell/tree-sitter-powershell.wasm" as string, {
-    with: { type: "wasm" },
-  })
-  const bashPath = resolveWasm(bashWasm)
-  const psPath = resolveWasm(psWasm)
-  const [bashLanguage, psLanguage] = await Promise.all([Language.load(bashPath), Language.load(psPath)])
+  const { Parser, Language } = await import("web-tree-sitter")
+  const fs = await import("node:fs")
+  const path = await import("node:path")
+  const { createRequire } = await import("node:module")
+  const os = await import("node:os")
+  
+  // Load WASM files - cross-platform approach
+  // Bun uses: import("foo.wasm", { with: { type: "wasm" } })
+  // Node.js needs: fs.readFile + WASM.instantiate
+  const loadWasm = async (modulePath: string): Promise<string> => {
+    // Bun environment
+    if (typeof Bun !== "undefined") {
+      const { default: wasm } = await import(modulePath as string, {
+        with: { type: "wasm" },
+      })
+      return wasm as unknown as string
+    }
+    // Node.js environment - write to temp file for tree-sitter
+    const req = createRequire(import.meta.url)
+    const wasmPath = req.resolve(modulePath)
+    const wasmBuffer = await fs.promises.readFile(wasmPath)
+    const tmpPath = path.join(os.tmpdir(), `tree-sitter-${Date.now()}.wasm`)
+    await fs.promises.writeFile(tmpPath, wasmBuffer)
+    return tmpPath
+  }
+
+  await Parser.init()
+  
+  const bashPath = await loadWasm("tree-sitter-bash/tree-sitter-bash.wasm")
+  const psPath = await loadWasm("tree-sitter-powershell/tree-sitter-powershell.wasm")
+  
+  const [bashLanguage, psLanguage] = await Promise.all([
+    Language.load(bashPath),
+    Language.load(psPath),
+  ])
   const bash = new Parser()
   bash.setLanguage(bashLanguage)
   const ps = new Parser()
