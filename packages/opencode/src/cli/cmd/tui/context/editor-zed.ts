@@ -1,34 +1,36 @@
-import { openSqliteDb, type SqliteDatabase } from "#sqlite"
-import { readFile } from "node:fs/promises"
+import { Database } from "bun:sqlite"
 import os from "node:os"
 import path from "node:path"
-import z from "zod"
+import { Option, Schema } from "effect"
 import { Filesystem } from "@/util/filesystem"
 import type { EditorSelection } from "./editor"
 
-const ZedEditorRowSchema = z.object({
-  item_kind: z.string(),
-  editor_id: z.number().nullable(),
-  workspace_id: z.number(),
-  workspace_paths: z.string().nullable(),
-  timestamp: z.string(),
-  buffer_path: z.string().nullable(),
+const ZedEditorRowSchema = Schema.Struct({
+  item_kind: Schema.String,
+  editor_id: Schema.NullOr(Schema.Number),
+  workspace_id: Schema.Number,
+  workspace_paths: Schema.NullOr(Schema.String),
+  timestamp: Schema.String,
+  buffer_path: Schema.NullOr(Schema.String),
 })
 
-const ZedSelectionRowSchema = z.object({
-  selection_start: z.number().nullable(),
-  selection_end: z.number().nullable(),
+const ZedSelectionRowSchema = Schema.Struct({
+  selection_start: Schema.NullOr(Schema.Number),
+  selection_end: Schema.NullOr(Schema.Number),
 })
 
-const ZedEditorContentsSchema = z.object({
-  contents: z.string().nullable(),
+const ZedEditorContentsSchema = Schema.Struct({
+  contents: Schema.NullOr(Schema.String),
 })
+
+const decodeZedEditorRow = Schema.decodeUnknownOption(ZedEditorRowSchema)
+const decodeZedSelectionRow = Schema.decodeUnknownOption(ZedSelectionRowSchema)
+const decodeZedEditorContents = Schema.decodeUnknownOption(ZedEditorContentsSchema)
 
 const utf8 = new TextEncoder()
 
-type ZedEditorRow = z.infer<typeof ZedEditorRowSchema>
+type ZedEditorRow = Schema.Schema.Type<typeof ZedEditorRowSchema>
 type ZedActiveEditorRow = ZedEditorRow & { item_kind: "Editor"; editor_id: number }
-type ZedSelectionRow = z.infer<typeof ZedSelectionRowSchema>
 
 export type ZedSelectionResult =
   | { type: "selection"; selection: EditorSelection }
@@ -61,7 +63,9 @@ export async function resolveZedSelection(dbPath: string, cwd = process.cwd()): 
   const text =
     contents.type === "contents" && contents.contents != null
       ? contents.contents
-      : await readFile(row.buffer_path, "utf8").catch(() => undefined)
+      : await Bun.file(row.buffer_path)
+          .text()
+          .catch(() => undefined)
   if (text == null) return { type: "unavailable" }
 
   const ranges = byteRanges.map((range) => {
@@ -84,9 +88,9 @@ export async function resolveZedSelection(dbPath: string, cwd = process.cwd()): 
 }
 
 function queryZedActiveEditor(dbPath: string, cwd: string) {
-  let db: SqliteDatabase | undefined
+  let db: Database | undefined
   try {
-    db = openSqliteDb(dbPath, { readonly: true })
+    db = new Database(dbPath, { readonly: true })
     const raw = db
       .query(
         `select
@@ -106,8 +110,8 @@ function queryZedActiveEditor(dbPath: string, cwd: string) {
       .all()
 
     const rows = raw.flatMap((row) => {
-      const parsed = ZedEditorRowSchema.safeParse(row)
-      return parsed.success ? [parsed.data] : []
+      const parsed = decodeZedEditorRow(row)
+      return Option.isSome(parsed) ? [parsed.value] : []
     })
 
     if (raw.length > 0 && rows.length === 0) return { type: "unavailable" as const }
@@ -142,8 +146,8 @@ function queryZedEditorSelections(dbPath: string, row: ZedActiveEditorRow) {
       .all({ $editorID: row.editor_id, $workspaceID: row.workspace_id })
 
     const selections = raw.flatMap((selection) => {
-      const parsed = ZedSelectionRowSchema.safeParse(selection)
-      return parsed.success ? [parsed.data] : []
+      const parsed = decodeZedSelectionRow(selection)
+      return Option.isSome(parsed) ? [parsed.value] : []
     })
 
     if (raw.length > 0 && selections.length === 0) return { type: "unavailable" as const }
@@ -156,10 +160,10 @@ function queryZedEditorSelections(dbPath: string, row: ZedActiveEditorRow) {
 }
 
 function queryZedEditorContents(dbPath: string, row: ZedActiveEditorRow) {
-  let db: SqliteDatabase | undefined
+  let db: Database | undefined
   try {
-    db = openSqliteDb(dbPath, { readonly: true })
-    const parsed = ZedEditorContentsSchema.safeParse(
+    db = new Database(dbPath, { readonly: true })
+    const parsed = decodeZedEditorContents(
       db
         .query(
           `select contents
@@ -168,8 +172,8 @@ function queryZedEditorContents(dbPath: string, row: ZedActiveEditorRow) {
         )
         .get({ $editorID: row.editor_id, $workspaceID: row.workspace_id }),
     )
-    if (!parsed.success) return { type: "unavailable" as const }
-    return { type: "contents" as const, contents: parsed.data.contents }
+    if (Option.isNone(parsed)) return { type: "unavailable" as const }
+    return { type: "contents" as const, contents: parsed.value.contents }
   } catch {
     return { type: "unavailable" as const }
   } finally {
